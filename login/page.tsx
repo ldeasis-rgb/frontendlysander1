@@ -1,162 +1,142 @@
-"use client";
+﻿"use client";
 
-import { useEffect, useState } from "react";
+import {
+  type ChangeEvent,
+  type FormEvent,
+  useEffect,
+  useState,
+} from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useAuthGuard } from "@/hooks/useAuthGuard";
-import { removeToken } from "@/lib/auth";
 import { api } from "@/lib/api";
+import { isAuthenticated, setToken } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 
-interface DashboardItem {
-  id: number | string;
-  name: string;
-  status: string;
-  createdAt?: string;
+interface LoginResponse {
+  access_token?: string;
+  token?: string;
+  message?: string;
 }
 
-export default function DashboardPage() {
+export default function LoginPage() {
   const router = useRouter();
-  const { isAuthorized, user } = useAuthGuard("/login");
-
-  const [items, setItems] = useState<DashboardItem[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string>("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!isAuthorized) return;
+    if (isAuthenticated()) {
+      router.replace("/dashboard");
+    }
+  }, [router]);
 
-    async function fetchDashboardData() {
-      try {
-        setLoading(true);
-        // Palitan ang "/items" o "/users" ng actual protected endpoint ng backend mo
-        const data = await api.get<DashboardItem[]>("/items");
-        setItems(Array.isArray(data) ? data : []);
-      } catch (err: any) {
-        // Kung wala pang endpoint sa backend, hindi magka-crash ang UI
-        setError(err.message || "Failed to load data.");
-      } finally {
-        setLoading(false);
-      }
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError("");
+
+    if (!email || !password) {
+      setError("Please enter your email and password.");
+      return;
     }
 
-    fetchDashboardData();
-  }, [isAuthorized]);
+    setLoading(true);
 
-  const handleLogout = () => {
-    removeToken();
-    router.replace("/login");
+    try {
+      const data = await api.post<LoginResponse>("/auth/login", {
+        email,
+        password,
+      });
+
+      const jwt = data?.access_token || data?.token;
+      if (!jwt) {
+        setError(data?.message || "Login failed. Please try again.");
+        return;
+      }
+
+      setToken(jwt);
+      router.push("/dashboard");
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Login failed. Please try again.";
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Huwag ipakita ang dashboard habang vine-verify ang JWT token
-  if (!isAuthorized) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="text-muted-foreground">Verifying session...</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-background p-6 md:p-10">
-      <div className="mx-auto max-w-5xl space-y-6">
-        {/* Header & Logout */}
-        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-            <p className="text-muted-foreground">
-              Welcome back, {user?.name || user?.email || "User"}
-            </p>
-          </div>
-          <Button variant="destructive" onClick={handleLogout}>
-            Logout
-          </Button>
-        </div>
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="space-y-1">
+          <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
+          <CardDescription>Sign in to continue to your account</CardDescription>
+        </CardHeader>
 
-        {/* User Info / Summary Cards */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Account Email</CardDescription>
-              <CardTitle className="text-lg truncate">
-                {user?.email || "N/A"}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Role</CardDescription>
-              <CardTitle className="text-lg capitalize">
-                {user?.role || "Member"}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Total Records</CardDescription>
-              <CardTitle className="text-lg">{items.length}</CardTitle>
-            </CardHeader>
-          </Card>
-        </div>
-
-        {/* Data Table Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Records</CardTitle>
-            <CardDescription>
-              Data fetched from your protected backend API.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <p className="text-sm text-muted-foreground">Loading records...</p>
-            ) : error ? (
-              <p className="text-sm text-destructive">{error}</p>
-            ) : items.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No records found.
-              </p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>ID</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Date</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell className="font-medium">{item.id}</TableCell>
-                      <TableCell>{item.name}</TableCell>
-                      <TableCell>{item.status}</TableCell>
-                      <TableCell>{item.createdAt || "-"}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+        <form onSubmit={handleSubmit}>
+          <CardContent className="space-y-4">
+            {error && (
+              <div className="rounded-md bg-destructive/15 p-3 text-sm text-destructive">
+                {error}
+              </div>
             )}
+
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="name@example.com"
+                value={email}
+                onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                  setEmail(e.target.value)
+                }
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                  setPassword(e.target.value)
+                }
+                required
+              />
+            </div>
           </CardContent>
-        </Card>
-      </div>
+
+          <CardFooter className="flex flex-col space-y-4 pt-4">
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? "Signing in..." : "Login"}
+            </Button>
+
+            <p className="text-center text-sm text-muted-foreground">
+              Don&apos;t have an account?{" "}
+              <Link
+                href="/register"
+                className="font-medium text-primary underline-offset-4 hover:underline"
+              >
+                Register
+              </Link>
+            </p>
+          </CardFooter>
+        </form>
+      </Card>
     </div>
   );
 }
